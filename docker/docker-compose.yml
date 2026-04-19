@@ -1,0 +1,17 @@
+services:
+  usermysql:
+    image: mysql/mysql-server:latest
+    container_name: user-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: players
+      MYSQL_USER: appuser
+      MYSQL_PASSWORD: mypassword
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-prootpassword"]
+      interval: 10s
+      retries: 10
+      start_period: 20s
+      timeout: 5s
