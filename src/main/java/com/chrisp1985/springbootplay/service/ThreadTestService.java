@@ -4,16 +4,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class DetailsService {
+public class ThreadTestService {
 
-    private static final Logger log = LoggerFactory.getLogger(DetailsService.class);
+    private static final Logger log = LoggerFactory.getLogger(ThreadTestService.class);
 
     private WorkersService workersService;
 
-    public DetailsService(WorkersService workersService) {
+    public ThreadTestService(WorkersService workersService) {
         this.workersService = workersService;
     }
 

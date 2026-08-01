@@ -26,26 +26,26 @@ public class PlayerController {
     }
 
     @GetMapping
-    public ResponseEntity<PlayerRequest> getPlayer() {
+    public ResponseEntity<PlayerRequest> fetchManualChris() {
         PlayerRequest chris = new PlayerRequest("Chris", 41, Position.MF, 8.9);
         log.info("Returning Player.");
         return ResponseEntity.ok(chris);
     }
 
     @PostMapping
-    public ResponseEntity<String> addPlayer(@RequestBody @Valid PlayerRequest playerDto) {
+    public ResponseEntity<String> addPlayerToDb(@RequestBody @Valid PlayerRequest playerDto) {
         log.info("Received player: {}", playerDto);
         FullPlayer player = playerService.addPlayerToDatabase(playerDto);
-        return ResponseEntity.ok(String.format("Added player: %s.", player.name()));
+        return ResponseEntity.ok(String.format("Added player: %s.", player.getName()));
     }
 
     @PostMapping(value = "/aidetails")
-    public ResponseEntity<String> getPlayerDetails(@RequestBody @Valid PlayerDetailsRequest player) {
-        return ResponseEntity.ok(playerService.getPlayerInfo(player));
+    public ResponseEntity<String> getPlayerDetailsFromAi(@RequestBody @Valid PlayerDetailsRequest player) {
+        return ResponseEntity.ok(playerService.getPlayerAiInfo(player));
     }
 
     @GetMapping("/database")
-    public ResponseEntity<String> getPlayerDatabase(@RequestBody @Valid PlayerDetailsRequest player) {
+    public ResponseEntity<String> getPlayerFromDatabase(@RequestBody @Valid PlayerDetailsRequest player) {
         return ResponseEntity.ok(playerService.getPlayerDatabaseInfo(player.name()));
     }
 }

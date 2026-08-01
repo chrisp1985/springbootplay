@@ -1,8 +1,9 @@
 package com.chrisp1985.springbootplay.service;
 
 import com.chrisp1985.springbootplay.model.*;
-import com.chrisp1985.springbootplay.model.entity.AuditLog;
 import com.chrisp1985.springbootplay.model.entity.FullPlayer;
+import com.chrisp1985.springbootplay.model.mapper.AuditMapper;
+import com.chrisp1985.springbootplay.model.mapper.PlayerMapper;
 import com.chrisp1985.springbootplay.repository.AuditLogRespository;
 import com.chrisp1985.springbootplay.repository.PlayerRespository;
 import org.slf4j.Logger;
@@ -36,7 +37,7 @@ public class PlayerService {
         return playerDto.name();
     }
 
-    public String getPlayerInfo(PlayerDetailsRequest player) {
+    public String getPlayerAiInfo(PlayerDetailsRequest player) {
         return chatClient
                 .prompt("Return the current season football stats for " + player.name() +
                         " as plain text. Include goals, assists, appearances.")
@@ -46,14 +47,14 @@ public class PlayerService {
 
     public String getPlayerDatabaseInfo(String name) {
         return playerRespository
-                .findById(name)
-                .orElse(playerMapper.toRequest(new PlayerRequest("default", 23, Position.MF, 0.0)))
-                .name();
+                .findByName(name)
+                .orElseGet(() -> playerMapper.toEntity(new PlayerRequest("default", 23, Position.MF, 0.0)))
+                .getName();
     }
 
     @Transactional
     public FullPlayer addPlayerToDatabase(PlayerRequest playerDto) {
-        FullPlayer addedPlayer = playerRespository.save(playerMapper.toRequest(playerDto));
+        FullPlayer addedPlayer = playerRespository.save(playerMapper.toEntity(playerDto));
         log.info("Saving data: {}", playerDto);
         auditLogRespository.save(auditMapper.toEntity(playerDto));
         return addedPlayer;
