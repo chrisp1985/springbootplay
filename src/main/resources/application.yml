@@ -15,7 +15,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,flyway
+        include: health,flyway,metrics
   endpoint:
     health:
       show-details: always

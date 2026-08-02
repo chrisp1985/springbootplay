@@ -9,6 +9,7 @@ import com.chrisp1985.springbootplay.model.mapper.AuditMapper;
 import com.chrisp1985.springbootplay.model.mapper.PlayerMapper;
 import com.chrisp1985.springbootplay.repository.AuditLogRespository;
 import com.chrisp1985.springbootplay.repository.PlayerRespository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,12 +46,14 @@ class PlayerServiceTest {
     @Mock
     private AuditMapper auditMapper;
 
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
     private PlayerService playerService;
 
     @BeforeEach
     void setUp() {
         when(chatClientBuilder.build()).thenReturn(chatClient);
-        playerService = new PlayerService(chatClientBuilder, playerMapper, auditMapper, playerRespository, auditLogRespository);
+        playerService = new PlayerService(chatClientBuilder, playerMapper, auditMapper, playerRespository, auditLogRespository, meterRegistry);
     }
 
     @Test
@@ -101,11 +104,36 @@ class PlayerServiceTest {
     void getPlayerAiInfo_returnsChatClientContent() {
         ChatClient deepChatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         when(chatClientBuilder.build()).thenReturn(deepChatClient);
-        PlayerService service = new PlayerService(chatClientBuilder, playerMapper, auditMapper, playerRespository, auditLogRespository);
+        PlayerService service = new PlayerService(chatClientBuilder, playerMapper, auditMapper, playerRespository, auditLogRespository, meterRegistry);
         when(deepChatClient.prompt(anyString()).call().content()).thenReturn("Goals: 10, Assists: 5, Appearances: 20");
 
         String result = service.getPlayerAiInfo(new PlayerDetailsRequest("Chris"));
 
         assertThat(result).isEqualTo("Goals: 10, Assists: 5, Appearances: 20");
+    }
+
+    @Test
+    void addPlayerToDatabase_recordsDbLatencyMetricForEachRepositoryCall() {
+        PlayerRequest request = new PlayerRequest("Chris", 41, Position.MF, 8.9);
+        FullPlayer entity = new FullPlayer(1L, "Chris", 41, Position.MF, 8.9);
+        AuditLog auditEntity = new AuditLog(null, "Chris", 41, Position.MF, 8.9);
+
+        when(playerMapper.toEntity(request)).thenReturn(entity);
+        when(playerRespository.save(entity)).thenReturn(entity);
+        when(auditMapper.toEntity(request)).thenReturn(auditEntity);
+
+        playerService.addPlayerToDatabase(request);
+
+        assertThat(meterRegistry.get("db.latency").tag("operation", "save").timer().count()).isEqualTo(1);
+        assertThat(meterRegistry.get("db.latency").tag("operation", "auditSave").timer().count()).isEqualTo(1);
+    }
+
+    @Test
+    void getPlayerDatabaseInfo_recordsDbLatencyMetric() {
+        when(playerRespository.findByName("Chris")).thenReturn(Optional.of(new FullPlayer(1L, "Chris", 41, Position.MF, 8.9)));
+
+        playerService.getPlayerDatabaseInfo("Chris");
+
+        assertThat(meterRegistry.get("db.latency").tag("operation", "findByName").timer().count()).isEqualTo(1);
     }
 }
