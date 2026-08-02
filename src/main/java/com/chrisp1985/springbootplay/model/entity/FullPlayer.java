@@ -14,7 +14,10 @@ public class FullPlayer {
 
     private String name;
     private Integer age;
+
+    @Enumerated(EnumType.STRING)
     private Position position;
+
     private Double rating;
 
     protected FullPlayer() {}
