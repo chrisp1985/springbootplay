@@ -12,14 +12,14 @@ spring:
     baseline-on-migrate: true
 
   ai:
-    openai:
-      api-key: ${OPENAI_API_KEY}
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY}
       chat:
         options:
-          model: gpt-4o-mini
+          model: claude-opus-5
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,flyway
+        include: health,flyway,caches

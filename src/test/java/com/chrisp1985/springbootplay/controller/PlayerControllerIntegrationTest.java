@@ -1,11 +1,14 @@
 package com.chrisp1985.springbootplay.controller;
 
+import com.chrisp1985.springbootplay.repository.PlayerRespository;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.mysql.MySQLContainer;
@@ -34,11 +37,23 @@ class PlayerControllerIntegrationTest {
     @Autowired
     private MockMvc mockMvc;
 
+    @MockitoSpyBean
+    private PlayerRespository playerRespository;
+
     @Test
-    void fetchManualChris_returnsHardcodedPlayer() throws Exception {
+    void fetchPlayerByName_secondRequestIsServedFromCacheNotTheDatabase() throws Exception {
+        mockMvc.perform(get("/api/v1/players/Harry Kane"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/players/Harry Kane"))
+                .andExpect(status().isOk());
+
+        Mockito.verify(playerRespository, Mockito.times(1)).findFirstByName("Harry Kane");
+    }
+
+    @Test
+    void fetchAllPlayers_returnsSeededPlayers() throws Exception {
         mockMvc.perform(get("/api/v1/players"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name").value("Chris"));
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -46,18 +61,20 @@ class PlayerControllerIntegrationTest {
         mockMvc.perform(post("/api/v1/players")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"Testcontainer Chris","age":30,"position":"FW","rating":7.5}
+                                {"name":"TestcontainerChris","age":30,"position":"FW","rating":7.5}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Added player: Testcontainer Chris."));
+                .andExpect(content().string("Added player: TestcontainerChris."));
 
-        mockMvc.perform(get("/api/v1/players/database")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"name":"Testcontainer Chris"}
-                                """))
+        mockMvc.perform(get("/api/v1/players/TestcontainerChris"))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Testcontainer Chris"));
+                .andExpect(jsonPath("$.name").value("TestcontainerChris"));
+    }
+
+    @Test
+    void fetchPlayerByName_returnsNotFoundForUnknownPlayer() throws Exception {
+        mockMvc.perform(get("/api/v1/players/Nobody"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

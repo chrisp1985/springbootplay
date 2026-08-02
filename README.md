@@ -1,26 +1,74 @@
 # springbootplay
 
-This is a sandbox project for me to try out Spring Boot (4.x) features. It's not a real
-application, just a small "football players" API I use as an excuse to wire up different
-parts of the framework in one place, with a minimal working example of each.
+This is a sandbox project for me to try out Spring Boot (4.x) features. It's a small REST API
+for managing a football squad, built as an excuse to wire up a handful of Spring Boot pieces
+(async work, scheduled jobs, Spring AI, Actuator, Flyway, etc.) around a domain simple enough
+not to get in the way.
+
+**What it does:** lets you add players (name, age, position, rating) and keeps each one's
+rating and an AI-generated season summary up to date over time — both on demand and on a
+recurring schedule — writing an audit trail of every change along the way.
+
+**What it interacts with:**
+
+* **MySQL** — the player/audit data, via Spring Data JPA, with schema and seed data managed by
+  Flyway migrations ([`db/migration`](src/main/resources/db/migration)).
+* **A simulated third-party ratings API** —
+  [`RMClient`](src/main/java/com/chrisp1985/springbootplay/client/RMClient.java) fakes a slow
+  external "ratings model" call (blocking delay + jitter around the current rating) rather than
+  hitting a real service, so the enrichment flow is runnable without external credentials.
+* **Anthropic's Claude**, via Spring AI's `ChatClient` — asked for a plain-text season stats
+  summary (goals/assists/appearances) per player. Needs an `ANTHROPIC_API_KEY` (see
+  [Running locally](#running-locally)).
+
+**API surface** (`PlayerController`, under `/api/v1/players`):
+
+| Method & path | Does |
+| --- | --- |
+| `POST /` | Add a player, write a `CREATED` audit row, kick off async enrichment |
+| `GET /` | Paginated list of all players |
+| `GET /{name}` | A single player by name (first match if the name isn't unique) |
+| `POST /{name}/enrich` | Trigger full enrichment (rating + AI summary) for a player on demand |
+| `POST /aidetails` | Ask the AI directly for a player's season stats, without touching the database |
+
+## General Flow
+
+1. `POST /api/v1/players` saves the player and writes a `CREATED` audit row, then kicks off
+   async enrichment for it.
+2. [`PlayerEnrichmentService.enrichPlayer`](src/main/java/com/chrisp1985/springbootplay/service/PlayerEnrichmentService.java)
+   (`@Async`, so the request above returns before this finishes) calls
+   [`RMClient.fetchLatestRating`](src/main/java/com/chrisp1985/springbootplay/client/RMClient.java)
+   — standing in for a slow third-party ratings API — to refresh the player's rating, then
+   calls [`PlayerService.getPlayerAiInfo`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java)
+   (Spring AI) for a season stats summary, storing both on the player and writing
+   `RATING_REFRESH` / `AI_ENRICHED` audit rows. Player names aren't required to be unique
+   (e.g. multiple "TRIALIST" entries), so both steps look up every player matching the name
+   (`PlayerRespository.findAllByName`) and enrich each one individually.
+3. A `@Scheduled` sweep (`PlayerEnrichmentService.refreshAllRatings`, every 5 minutes)
+   re-runs the rating-refresh half of enrichment for every player, so ratings don't go stale
+   between manual triggers. It deliberately skips the AI call so it doesn't hit the Anthropic
+   API on a timer.
+4. The results are readable straight away — see the **API surface** table above for the full
+   set of endpoints, including the on-demand enrich trigger and the read endpoints.
 
 ## Spring Boot features demonstrated
 
 | Feature | Where |
 | --- | --- |
-| REST controllers (`@RestController`, `@RequestMapping`) | [`PlayerController`](src/main/java/com/chrisp1985/springbootplay/controller/PlayerController.java), [`ThreadTestController`](src/main/java/com/chrisp1985/springbootplay/controller/ThreadTestController.java) |
+| REST controllers (`@RestController`, `@RequestMapping`) | [`PlayerController`](src/main/java/com/chrisp1985/springbootplay/controller/PlayerController.java) |
 | Request validation (`spring-boot-starter-validation`, `@Valid`) | [`PlayerController`](src/main/java/com/chrisp1985/springbootplay/controller/PlayerController.java), [`PlayerRequest`](src/main/java/com/chrisp1985/springbootplay/model/PlayerRequest.java), [`PlayerDetailsRequest`](src/main/java/com/chrisp1985/springbootplay/model/PlayerDetailsRequest.java) |
-| Global exception handling (`@RestControllerAdvice`, `@ExceptionHandler`) | [`PlayerExceptions`](src/main/java/com/chrisp1985/springbootplay/exception/PlayerExceptions.java) |
+| Global exception handling (`@RestControllerAdvice`, `@ExceptionHandler`) | [`PlayerExceptions`](src/main/java/com/chrisp1985/springbootplay/exception/PlayerExceptions.java). Handles validation errors, malformed JSON, and a 404 for [`PlayerNotFoundException`](src/main/java/com/chrisp1985/springbootplay/exception/PlayerNotFoundException.java) |
 | Spring Data JPA repositories | [`PlayerRespository`](src/main/java/com/chrisp1985/springbootplay/repository/PlayerRespository.java), [`AuditLogRespository`](src/main/java/com/chrisp1985/springbootplay/repository/AuditLogRespository.java) |
-| Transactions (`@Transactional`) | [`PlayerService.addPlayerToDatabase`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java) |
-| Database migrations (Flyway) | [`db/migration`](src/main/resources/db/migration). Schema, seed data and an audit log table |
-| Async execution (`@EnableAsync`, `@Async`) | [`WorkersService.runExternalWorkers`](src/main/java/com/chrisp1985/springbootplay/service/WorkersService.java), triggered from [`ThreadTestService.checkWhenAsyncRuns`](src/main/java/com/chrisp1985/springbootplay/service/ThreadTestService.java) |
-| Scheduled tasks (`@EnableScheduling`, `@Scheduled`) | [`ThreadTestService.scheduledCheck`](src/main/java/com/chrisp1985/springbootplay/service/ThreadTestService.java) |
+| Transactions (`@Transactional`) | [`PlayerService.addPlayerToDatabase`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java), [`PlayerEnrichmentService.refreshRating`](src/main/java/com/chrisp1985/springbootplay/service/PlayerEnrichmentService.java) |
+| Database migrations (Flyway) | [`db/migration`](src/main/resources/db/migration). Schema, seed data, and an audit log table that's grown an `action`/`created_at` trail as the enrichment flow was added |
+| Async execution (`@EnableAsync`, `@Async`) | [`PlayerEnrichmentService.enrichPlayer`](src/main/java/com/chrisp1985/springbootplay/service/PlayerEnrichmentService.java), triggered from [`PlayerController.addPlayerToDb`](src/main/java/com/chrisp1985/springbootplay/controller/PlayerController.java) and `POST /{name}/enrich` |
+| Scheduled tasks (`@EnableScheduling`, `@Scheduled`) | [`PlayerEnrichmentService.refreshAllRatings`](src/main/java/com/chrisp1985/springbootplay/service/PlayerEnrichmentService.java), sweeps every player's rating every 5 minutes |
 | DTO to entity mapping (MapStruct) | [`PlayerMapper`](src/main/java/com/chrisp1985/springbootplay/model/mapper/PlayerMapper.java), [`AuditMapper`](src/main/java/com/chrisp1985/springbootplay/model/mapper/AuditMapper.java) |
-| Spring AI (OpenAI chat client) | [`PlayerService.getPlayerAiInfo`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java). Asks an LLM for a player's season stats |
-| Actuator (health/observability endpoints) | enabled in [`application.yml`](src/main/resources/application.yml) / [`application-dev.yml`](src/main/resources/application-dev.yml) (`health`, `flyway`) |
+| Spring AI (Anthropic chat client) | [`PlayerService.getPlayerAiInfo`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java). Asks an LLM for a player's season stats; called both directly (`/aidetails`) and as part of enrichment |
+| Caching (`@EnableCaching`, `@Cacheable`, `@CacheEvict`/`@Caching`) | [`PlayerService.getAllPlayers`/`getPlayerByName`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java) cache the two read endpoints (Caffeine, 30s TTL, configured in [`application.yml`](src/main/resources/application.yml)); `addPlayerToDatabase` evicts on write. Rating/AI-summary updates from enrichment go straight to the DB via narrow update queries and aren't evicted, so a cached page can lag those by up to the TTL — an accepted tradeoff, see the doc comment on `getAllPlayers` |
+| Actuator (health/observability endpoints) | enabled in [`application.yml`](src/main/resources/application.yml) / [`application-dev.yml`](src/main/resources/application-dev.yml) (`health`, `flyway`, plus `metrics`/`caches` in the base config) |
 | Custom Actuator health indicator | [`PlayerDataHealthIndicator`](src/main/java/com/chrisp1985/springbootplay/health/PlayerDataHealthIndicator.java). Reports `DOWN` if the player table can't be reached or is empty, shown under `/actuator/health` |
-| Custom metric (Micrometer) | [`PlayerService.timeDbCall`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java). Times each repository call with a `db.latency` `Timer`, tagged by operation (`save`, `findByName`, `auditSave`), visible under `/actuator/metrics/db.latency` |
+| Custom metric (Micrometer) | [`PlayerService.timeDbCall`](src/main/java/com/chrisp1985/springbootplay/service/PlayerService.java). Times each repository call with a `db.latency` `Timer`, tagged by operation (`save`, `findByName`, `findAll`, `auditSave`), visible under `/actuator/metrics/db.latency` |
 | Profile-specific configuration | [`application.yml`](src/main/resources/application.yml) vs [`application-dev.yml`](src/main/resources/application-dev.yml) |
 | Logging with SLF4J | throughout the controller/service layer |
 | OCI image build with Jib (no Dockerfile needed) | `jib` block in [`build.gradle`](build.gradle) |
@@ -31,7 +79,7 @@ Bits of the project that aren't really about the framework, but useful to have e
 
 | Feature | Where |
 | --- | --- |
-| Long-running/blocking work on a thread (plain Java, `Thread.sleep`) | [`WorkersService.longRunningWorker` / `shortRunningWorker`](src/main/java/com/chrisp1985/springbootplay/service/WorkersService.java). Stands in for a slow external call, so you can see how wrapping it in `@Async` changes when the caller gets control back |
+| Long-running/blocking work on a thread (plain Java, `Thread.sleep`) | [`RMClient.fetchLatestRating`](src/main/java/com/chrisp1985/springbootplay/client/RMClient.java). Stands in for a slow external ratings API, so you can see how wrapping the enrichment call in `@Async` changes when the caller gets control back |
 | Java records as immutable request DTOs | [`PlayerRequest`](src/main/java/com/chrisp1985/springbootplay/model/PlayerRequest.java), [`PlayerDetailsRequest`](src/main/java/com/chrisp1985/springbootplay/model/PlayerDetailsRequest.java) |
 | MapStruct as a compile-time mapping generator (the annotation processor itself, not the Spring wiring) | [`PlayerMapper`](src/main/java/com/chrisp1985/springbootplay/model/mapper/PlayerMapper.java), [`AuditMapper`](src/main/java/com/chrisp1985/springbootplay/model/mapper/AuditMapper.java), generated code lands in `build/generated/sources/annotationProcessor` |
 | Flyway as a standalone schema versioning tool | [`db/migration`](src/main/resources/db/migration) |
@@ -55,8 +103,8 @@ and only breaks when the thing it's meant to check breaks.
   classpath at all.
 * [`PlayerRespositoryTest`](src/test/java/com/chrisp1985/springbootplay/repository/PlayerRespositoryTest.java)
   uses `@DataJpaTest`. It only starts the JPA layer against an in-memory H2 database, so it
-  can check query methods like `findByName` actually work against a real (if temporary)
-  database, without the cost of starting the whole application.
+  can check query methods like `findFirstByName`/`findAllByName` actually work against a real
+  (if temporary) database, without the cost of starting the whole application.
 
 Neither of those two slices proves the app works end to end against a real database though,
 since H2 isn't MySQL and the web slice doesn't touch a database at all. For that,
@@ -64,7 +112,16 @@ since H2 isn't MySQL and the web slice doesn't touch a database at all. For that
 uses `@SpringBootTest` with [Testcontainers](https://testcontainers.com/), starting a real
 MySQL container, running the actual Flyway migrations against it, and hitting the controller
 through MockMvc. It's slower (needs Docker) but it's the one test that would actually catch a
-migration or MySQL-specific SQL problem the other two can't see.
+migration or MySQL-specific SQL problem the other two can't see. It's also the one test with a
+real `CacheManager` wired in, so it's where caching itself gets verified — a `@MockitoSpyBean`
+on `PlayerRespository` confirms a second `GET /{name}` for the same player doesn't re-hit the
+database.
+
+Note: `@EnableCaching` lives on the main application class, so the `@WebMvcTest` and
+`@DataJpaTest` slices pick it up too, even though neither of them autoconfigures a
+`CacheManager` (it's not web- or JPA-specific). Both import `CacheAutoConfiguration` explicitly
+to satisfy the caching aspect at context startup — see the doc comments on
+`PlayerControllerTest` and `PlayerRespositoryTest`.
 
 ## Running locally
 
@@ -80,8 +137,8 @@ Then run the app with Gradle:
 ./gradlew bootRun
 ```
 
-The AI endpoint (`POST /api/v1/players/aidetails`) needs an `OPENAI_API_KEY` environment
-variable set, since it calls out to OpenAI via Spring AI.
+The AI endpoint (`POST /api/v1/players/aidetails`) needs an `ANTHROPIC_API_KEY` environment
+variable set, since it calls out to Anthropic via Spring AI.
 
 ## Building
 
@@ -131,7 +188,7 @@ Once built, run the container (point it at a reachable MySQL instance, e.g. the 
 `docker/docker-compose.yml`):
 
 ```bash
-docker run -p 8080:8080 -e OPENAI_API_KEY=... springbootplay:latest
+docker run -p 8080:8080 -e ANTHROPIC_API_KEY=... springbootplay:latest
 ```
 
 ## Reference Documentation

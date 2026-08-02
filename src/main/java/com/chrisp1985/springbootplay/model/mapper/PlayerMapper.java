@@ -9,6 +9,8 @@ import org.mapstruct.Mapping;
 public interface PlayerMapper {
 
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "aiSummary", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
     FullPlayer toEntity(PlayerRequest dto);
     PlayerRequest toDto(FullPlayer entity);
 }

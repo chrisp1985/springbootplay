@@ -8,8 +8,9 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface AuditMapper {
 
-    PlayerRequest toRequest(AuditLog dto);
-
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "playerName", source = "name")
+    @Mapping(target = "action", constant = "CREATED")
+    @Mapping(target = "createdAt", expression = "java(java.time.Instant.now())")
     AuditLog toEntity(PlayerRequest request);
 }

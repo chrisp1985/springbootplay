@@ -2,6 +2,7 @@ package com.chrisp1985.springbootplay.exception;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -33,5 +34,11 @@ public class PlayerExceptions {
     public ResponseEntity<String> handleMalformedJson(HttpMessageNotReadableException ex) {
         log.error("Malformed JSON", ex);
         return ResponseEntity.badRequest().body("Malformed request body");
+    }
+
+    @ExceptionHandler(PlayerNotFoundException.class)
+    public ResponseEntity<String> handlePlayerNotFound(PlayerNotFoundException ex) {
+        log.warn(ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ex.getMessage());
     }
 }

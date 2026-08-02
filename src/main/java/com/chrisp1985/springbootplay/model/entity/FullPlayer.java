@@ -3,6 +3,8 @@ package com.chrisp1985.springbootplay.model.entity;
 import com.chrisp1985.springbootplay.model.Position;
 import jakarta.persistence.*;
 
+import java.time.Instant;
+
 @Entity
 @Table(name="player")
 public class FullPlayer {
@@ -20,6 +22,12 @@ public class FullPlayer {
 
     private Double rating;
 
+    @Column(name = "AI_SUMMARY")
+    private String aiSummary;
+
+    @Column(name = "UPDATED_AT")
+    private Instant updatedAt;
+
     protected FullPlayer() {}
 
     public FullPlayer(Long id, String name, Integer age, Position position, Double rating) {
@@ -35,4 +43,10 @@ public class FullPlayer {
     public Integer getAge() { return age; }
     public Position getPosition() { return position; }
     public Double getRating() { return rating; }
+    public String getAiSummary() { return aiSummary; }
+    public Instant getUpdatedAt() { return updatedAt; }
+
+    public void setRating(Double rating) { this.rating = rating; }
+    public void setAiSummary(String aiSummary) { this.aiSummary = aiSummary; }
+    public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
 }
