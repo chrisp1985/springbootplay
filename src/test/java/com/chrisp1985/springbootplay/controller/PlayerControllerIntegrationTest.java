@@ -16,7 +16,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -63,8 +62,8 @@ class PlayerControllerIntegrationTest {
                         .content("""
                                 {"name":"TestcontainerChris","age":30,"position":"FW","rating":7.5}
                                 """))
-                .andExpect(status().isOk())
-                .andExpect(content().string("Added player: TestcontainerChris."));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("TestcontainerChris"));
 
         mockMvc.perform(get("/api/v1/players/TestcontainerChris"))
                 .andExpect(status().isOk())

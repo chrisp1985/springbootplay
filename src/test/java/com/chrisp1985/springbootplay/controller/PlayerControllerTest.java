@@ -73,7 +73,7 @@ class PlayerControllerTest {
     }
 
     @Test
-    void addPlayerToDb_returnsConfirmationMessageAndTriggersEnrichment() throws Exception {
+    void addPlayerToDb_returnsCreatedPlayerAndTriggersEnrichment() throws Exception {
         FullPlayer saved = new FullPlayer(1L, "Chris", 41, Position.MF, 8.9);
         when(playerService.addPlayerToDatabase(any())).thenReturn(saved);
 
@@ -82,8 +82,11 @@ class PlayerControllerTest {
                         .content("""
                                 {"name":"Chris","age":41,"position":"MF","rating":8.9}
                                 """))
-                .andExpect(status().isOk())
-                .andExpect(content().string("Added player: Chris."));
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("Chris"))
+                .andExpect(jsonPath("$.age").value(41))
+                .andExpect(jsonPath("$.position").value("MF"))
+                .andExpect(jsonPath("$.rating").value(8.9));
 
         verify(playerEnrichmentService).enrichPlayer("Chris");
     }
@@ -117,6 +120,7 @@ class PlayerControllerTest {
                                 {"name":"Chris"}
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(content().string("Goals: 10, Assists: 5, Appearances: 20"));
+                .andExpect(jsonPath("$.name").value("Chris"))
+                .andExpect(jsonPath("$.summary").value("Goals: 10, Assists: 5, Appearances: 20"));
     }
 }
