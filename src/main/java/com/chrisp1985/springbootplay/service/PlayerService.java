@@ -21,10 +21,15 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -84,9 +89,35 @@ public class PlayerService {
      * can show a stale rating/AI summary for up to the cache's expireAfterWrite window. That's
      * an accepted tradeoff for a read path that's otherwise hit on every page load.
      */
+    /**
+     * {@code sortBy} is applied in-memory to the already-fetched page rather than pushed down to
+     * the query, so it orders players within the current page only, not across the whole result
+     * set. That keeps the sort expressed as {@link Comparator}s (see {@link #resolveComparator})
+     * instead of DB-specific sort clauses.
+     */
     @Cacheable(cacheNames = "players")
-    public Page<FullPlayer> getAllPlayers(Pageable pageable) {
-        return timeDbCall("findAll", () -> playerRespository.findAll(pageable));
+    public Page<FullPlayer> getAllPlayers(Pageable pageable, String sortBy) {
+        Page<FullPlayer> page = timeDbCall("findAll", () -> playerRespository.findAll(pageable));
+        List<FullPlayer> sorted = new ArrayList<>(page.getContent());
+        sorted.sort(resolveComparator(sortBy));
+        return new PageImpl<>(sorted, pageable, page.getTotalElements());
+    }
+
+    /**
+     * Null/unrecognised {@code sortBy} falls back to {@link FullPlayer}'s natural ordering
+     * (highest rating first) via {@link Comparable}; named fields use explicit {@link Comparator}s.
+     */
+    private Comparator<FullPlayer> resolveComparator(String sortBy) {
+        if (sortBy == null) {
+            return Comparator.naturalOrder();
+        }
+        return switch (sortBy) {
+            case "name" -> Comparator.comparing(FullPlayer::getName, String.CASE_INSENSITIVE_ORDER);
+            case "age" -> Comparator.comparing(FullPlayer::getAge);
+            case "position" -> Comparator.comparing(FullPlayer::getPosition).thenComparing(Comparator.naturalOrder());
+            case "rating" -> Comparator.naturalOrder();
+            default -> Comparator.naturalOrder();
+        };
     }
 
     @Cacheable(cacheNames = "player", key = "#name")
@@ -99,7 +130,7 @@ public class PlayerService {
             @CacheEvict(cacheNames = "players", allEntries = true),
             @CacheEvict(cacheNames = "player", key = "#playerDto.name()")
     })
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public FullPlayer addPlayerToDatabase(PlayerRequest playerDto) {
         FullPlayer addedPlayer = timeDbCall("save", () -> playerRespository.save(playerMapper.toEntity(playerDto)));
         log.info("Saving data: {}", playerDto);

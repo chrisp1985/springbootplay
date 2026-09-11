@@ -108,7 +108,7 @@ class PlayerServiceTest {
         Pageable pageable = PageRequest.of(0, 20);
         when(playerRespository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(entity)));
 
-        Page<FullPlayer> result = playerService.getAllPlayers(pageable);
+        Page<FullPlayer> result = playerService.getAllPlayers(pageable, null);
 
         assertThat(result.getContent()).containsExactly(entity);
     }

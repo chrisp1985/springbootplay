@@ -5,7 +5,6 @@ import com.chrisp1985.springbootplay.model.PlayerResponse;
 import com.chrisp1985.springbootplay.model.entity.FullPlayer;
 import com.chrisp1985.springbootplay.model.PlayerRequest;
 import com.chrisp1985.springbootplay.model.PlayerDetailsRequest;
-import com.chrisp1985.springbootplay.model.mapper.PlayerMapper;
 import com.chrisp1985.springbootplay.service.PlayerEnrichmentService;
 import com.chrisp1985.springbootplay.service.PlayerService;
 import jakarta.validation.Valid;
@@ -34,8 +33,9 @@ public class PlayerController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<FullPlayer>> fetchAllPlayers(Pageable pageable) {
-        return ResponseEntity.ok(playerService.getAllPlayers(pageable));
+    public ResponseEntity<Page<FullPlayer>> fetchAllPlayers(Pageable pageable,
+            @RequestParam(required = false) String sortBy) {
+        return ResponseEntity.ok(playerService.getAllPlayers(pageable, sortBy));
     }
 
     @GetMapping("/{name}")

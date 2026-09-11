@@ -47,7 +47,7 @@ class PlayerControllerTest {
     @Test
     void fetchAllPlayers_returnsPageOfPlayersFromService() throws Exception {
         FullPlayer chris = new FullPlayer(1L, "Chris", 41, Position.MF, 8.9);
-        when(playerService.getAllPlayers(any())).thenReturn(new PageImpl<>(List.of(chris)));
+        when(playerService.getAllPlayers(any(), any())).thenReturn(new PageImpl<>(List.of(chris)));
 
         mockMvc.perform(get("/api/v1/players"))
                 .andExpect(status().isOk())

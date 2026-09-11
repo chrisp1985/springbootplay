@@ -7,7 +7,7 @@ import java.time.Instant;
 
 @Entity
 @Table(name="player")
-public class FullPlayer {
+public class FullPlayer implements Comparable<FullPlayer> {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,4 +49,14 @@ public class FullPlayer {
     public void setRating(Double rating) { this.rating = rating; }
     public void setAiSummary(String aiSummary) { this.aiSummary = aiSummary; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    /**
+     * Natural ordering is highest rating first, since "best player first" is the default view
+     * of a player list. Multi-field or ascending sorts are expressed as {@link java.util.Comparator}s
+     * by callers (see {@code PlayerService#resolveComparator}) rather than folded in here.
+     */
+    @Override
+    public int compareTo(FullPlayer other) {
+        return Double.compare(other.rating, this.rating);
+    }
 }
